@@ -1,27 +1,31 @@
-# app.py (멀티턴 대화 지원 버전)
+# app.py (Google API 요청 본문을 직접 받는 버전)
 
 import os
 import requests
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
-# 한글 출력을 위해 추가 (선택 사항, 이전 답변 참고)
+# 한글 출력을 위해 추가 (선택 사항)
 app.json.ensure_ascii = False
 
 @app.route('/gemini-proxy', methods=['POST'])
 def gemini_proxy():
-    # 1. 클라이언트 데이터 받기 (이제 'history' 배열을 기대)
-    client_data = request.get_json()
-    # 'history' 키가 있고, 리스트 형태인지 확인
-    if not client_data or 'history' not in client_data or not isinstance(client_data['history'], list):
-        return jsonify({"error": "요청 본문에 'history' 키가 포함된 JSON 배열 데이터가 필요합니다."}), 400
+    # 1. 클라이언트 데이터 받기 (Google API 요청 본문 전체를 기대)
+    google_api_payload = request.get_json()
 
-    conversation_history = client_data['history']
-    # 간단한 로그 출력 (마지막 사용자 메시지만)
-    if conversation_history:
-        print(f"요청 받음 (마지막 메시지): {conversation_history[-1].get('parts', [{}])[0].get('text', '')}")
+    # 받은 데이터가 유효한 JSON 객체이고 'contents' 키를 포함하는지 확인
+    if not google_api_payload or not isinstance(google_api_payload, dict) or 'contents' not in google_api_payload:
+        return jsonify({"error": "요청 본문은 'contents' 키를 포함하는 유효한 JSON 객체여야 합니다."}), 400
+
+    # 간단한 로그 출력 (contents의 마지막 사용자 메시지)
+    contents = google_api_payload.get('contents', [])
+    if contents and isinstance(contents, list) and len(contents) > 0:
+        last_message = contents[-1]
+        if isinstance(last_message, dict):
+             print(f"요청 받음 (마지막 메시지): {last_message.get('parts', [{}])[0].get('text', '')}")
     else:
-         print("요청 받음 (빈 히스토리)")
+         print("요청 받음 (contents 없음 또는 비정상)")
+
 
     # 2. 환경 변수에서 API 키 읽기
     gemini_api_key = os.environ.get('GEMINI_API_KEY')
@@ -31,27 +35,32 @@ def gemini_proxy():
 
     # 3. Google Gemini API 호출
     try:
-        # 사용할 모델 엔드포인트 (이전과 동일)
+        # 사용할 모델 엔드포인트 (API 키를 URL 파라미터로 전달)
+        # 모델 이름은 필요에 따라 변경 가능
         api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-exp-03-25:generateContent?key={gemini_api_key}"
         headers = { "Content-Type": "application/json" }
 
-        # API 요청 본문: 클라이언트로부터 받은 history 배열을 contents로 사용
-        data = {
-            "contents": conversation_history
-            # 필요하다면 여기에 generationConfig 등 추가
-        }
+        # API 요청 본문: 클라이언트로부터 받은 JSON 객체 전체를 그대로 사용
+        data = google_api_payload
 
         # POST 요청 보내기
         response = requests.post(api_url, headers=headers, json=data)
-        response.raise_for_status()
+        response.raise_for_status() # 오류 발생 시 예외 발생
 
         # 4. API 응답 처리 및 클라이언트에 반환
         gemini_response = response.json()
-        generated_text = gemini_response.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('text', '응답 텍스트를 추출하지 못했습니다.')
+
+        # 응답 구조에서 실제 텍스트 추출
+        # (주의: 오류 응답 또는 응답 구조가 다를 경우를 대비한 추가 처리가 필요할 수 있음)
+        generated_text = "응답 텍스트를 찾을 수 없습니다." # 기본값
+        if 'candidates' in gemini_response and len(gemini_response['candidates']) > 0:
+            candidate = gemini_response['candidates'][0]
+            if 'content' in candidate and 'parts' in candidate['content'] and len(candidate['content']['parts']) > 0:
+                generated_text = candidate['content']['parts'][0].get('text', generated_text)
 
         print(f"Gemini 응답 (일부): {generated_text[:100]}...")
 
-        # 클라이언트에게는 새로 생성된 Gemini 답변 텍스트만 반환
+        # 클라이언트에게는 최종 생성된 텍스트만 반환 (필요시 응답 구조 변경 가능)
         return jsonify({"response": generated_text})
 
     except requests.exceptions.RequestException as e:
@@ -62,7 +71,9 @@ def gemini_proxy():
                 error_details = e.response.json()
             except ValueError:
                 error_details = e.response.text
-        return jsonify({"error": "Gemini API 호출 중 오류 발생", "details": error_details}), 502
+        # 클라이언트에게 Google API의 오류 응답을 그대로 전달하거나 요약해서 전달할 수 있음
+        # 예시: return jsonify({"error": "Gemini API 호출 오류", "details": error_details}), e.response.status_code if e.response is not None else 502
+        return jsonify({"error": "Gemini API 호출 중 오류 발생", "details": error_details}), 502 # 이전과 동일하게 502 반환
 
     except Exception as e:
         print(f"서버 내부 오류: {e}")
