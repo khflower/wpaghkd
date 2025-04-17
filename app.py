@@ -50,6 +50,13 @@ def gemini_proxy():
         # 4. API 응답 처리 및 클라이언트에 반환
         gemini_response = response.json()
 
+        # !!! 다음 줄을 추가하여 Google API의 전체 응답을 로그로 출력 !!!
+        print(f"==== Google API 응답 전체 시작 ====")
+        print(gemini_response)
+        print(f"==== Google API 응답 전체 끝 ====")
+    
+        
+
         # 응답 구조에서 실제 텍스트 추출
         # (주의: 오류 응답 또는 응답 구조가 다를 경우를 대비한 추가 처리가 필요할 수 있음)
         generated_text = "응답 텍스트를 찾을 수 없습니다." # 기본값
