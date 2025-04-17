@@ -1,91 +1,84 @@
-# app.py (Google API 요청 본문을 직접 받는 버전)
+# app.py (Google API 요청/응답 형식을 최대한 따르는 버전)
 
 import os
 import requests
-from flask import Flask, request, jsonify
+import json # JSONDecodeError 처리를 위해 import
+from flask import Flask, request, jsonify, make_response # make_response 추가
 
 app = Flask(__name__)
-# 한글 출력을 위해 추가 (선택 사항)
-app.json.ensure_ascii = False
+# 한글 처리 및 JSON 출력 관련 설정 (선택 사항)
+app.json.sort_keys = False # 키 순서 유지 (디버깅 시 유용)
+app.json.ensure_ascii = False # 한글 깨짐 방지 (필요 시 주석 해제)
 
-@app.route('/gemini-proxy', methods=['POST'])
-def gemini_proxy():
-    # 1. 클라이언트 데이터 받기 (Google API 요청 본문 전체를 기대)
+# URL 경로에서 모델 ID와 메서드 이름을 받음
+# 예: /models/gemini-pro:generateContent -> model_id_with_method = "gemini-pro:generateContent"
+@app.route('/models/<path:model_id_with_method>', methods=['POST'])
+def gemini_proxy(model_id_with_method):
+
+    # 1. 클라이언트로부터 Google API 요청 본문 받기
     google_api_payload = request.get_json()
 
-    # 받은 데이터가 유효한 JSON 객체이고 'contents' 키를 포함하는지 확인
+    # 간단한 유효성 검사 (객체 형태이고 contents 포함 여부)
     if not google_api_payload or not isinstance(google_api_payload, dict) or 'contents' not in google_api_payload:
-        return jsonify({"error": "요청 본문은 'contents' 키를 포함하는 유효한 JSON 객체여야 합니다."}), 400
+        return jsonify({"error": "Request body must be a valid JSON object containing 'contents'"}), 400
 
-    # 간단한 로그 출력 (contents의 마지막 사용자 메시지)
-    contents = google_api_payload.get('contents', [])
-    if contents and isinstance(contents, list) and len(contents) > 0:
-        last_message = contents[-1]
-        if isinstance(last_message, dict):
-             print(f"요청 받음 (마지막 메시지): {last_message.get('parts', [{}])[0].get('text', '')}")
-    else:
-         print("요청 받음 (contents 없음 또는 비정상)")
-
+    print(f"요청 받은 모델/메서드: {model_id_with_method}")
+    print(f"요청 받은 페이로드 (일부): {str(google_api_payload)[:200]}...") # 로그 길이 제한
 
     # 2. 환경 변수에서 API 키 읽기
     gemini_api_key = os.environ.get('GEMINI_API_KEY')
     if not gemini_api_key:
-        print("오류: GEMINI_API_KEY 환경 변수가 설정되지 않았습니다.")
-        return jsonify({"error": "서버 설정 오류: API 키 없음"}), 500
+        print("Error: GEMINI_API_KEY environment variable not set.")
+        # 실제 Google API가 키 없을 때 400 Bad Request를 반환하기도 함
+        return jsonify({"error": {"code": 400, "message": "API key not configured on proxy server.", "status": "INVALID_ARGUMENT"}}), 400
 
     # 3. Google Gemini API 호출
     try:
-        # 사용할 모델 엔드포인트 (API 키를 URL 파라미터로 전달)
-        # 모델 이름은 필요에 따라 변경 가능
-        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-exp-03-25:generateContent?key={gemini_api_key}"
+        # URL 경로에서 받은 모델/메서드 정보와 API 키를 사용하여 실제 Google API URL 생성
+        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id_with_method}?key={gemini_api_key}"
+
         headers = { "Content-Type": "application/json" }
 
-        # API 요청 본문: 클라이언트로부터 받은 JSON 객체 전체를 그대로 사용
+        # 클라이언트로부터 받은 페이로드 전체를 그대로 전달
         data = google_api_payload
 
-        # POST 요청 보내기
-        response = requests.post(api_url, headers=headers, json=data)
-        response.raise_for_status() # 오류 발생 시 예외 발생
+        print(f"Google API 호출 시작: {api_url.split('key=')[0]}key=AIza...") # API 키 일부 숨김
 
-        # 4. API 응답 처리 및 클라이언트에 반환
-        gemini_response = response.json()
+        # Google API 호출
+        google_response = requests.post(api_url, headers=headers, json=data)
 
-        # !!! 다음 줄을 추가하여 Google API의 전체 응답을 로그로 출력 !!!
-        print(f"==== Google API 응답 전체 시작 ====")
-        print(gemini_response)
-        print(f"==== Google API 응답 전체 끝 ====")
-    
-        
+        # 4. Google API 응답을 클라이언트에게 그대로 전달
+        print(f"Google API 응답 상태 코드: {google_response.status_code}")
 
-        # 응답 구조에서 실제 텍스트 추출
-        # (주의: 오류 응답 또는 응답 구조가 다를 경우를 대비한 추가 처리가 필요할 수 있음)
-        generated_text = "응답 텍스트를 찾을 수 없습니다." # 기본값
-        if 'candidates' in gemini_response and len(gemini_response['candidates']) > 0:
-            candidate = gemini_response['candidates'][0]
-            if 'content' in candidate and 'parts' in candidate['content'] and len(candidate['content']['parts']) > 0:
-                generated_text = candidate['content']['parts'][0].get('text', generated_text)
+        # Google API 응답의 Content-Type 확인 및 설정
+        response_content_type = google_response.headers.get('Content-Type', 'application/json')
 
-        print(f"Gemini 응답 (일부): {generated_text[:100]}...")
+        # 응답 본문 처리 (JSON 시도, 실패 시 텍스트)
+        try:
+            response_data = google_response.json()
+            print("Google API 응답 (JSON 파싱 성공)")
+        except json.JSONDecodeError:
+            response_data = google_response.text # JSON 아니면 텍스트로 전달
+            print("Google API 응답 (JSON 파싱 실패, 텍스트로 처리)")
 
-        # 클라이언트에게는 최종 생성된 텍스트만 반환 (필요시 응답 구조 변경 가능)
-        return jsonify({"response": generated_text})
+        # Flask 응답 생성 (Google의 상태 코드와 내용 반영)
+        # make_response를 사용하여 상태 코드와 헤더를 설정
+        response_to_client = make_response(jsonify(response_data) if isinstance(response_data, dict) else response_data, google_response.status_code)
+        response_to_client.headers['Content-Type'] = response_content_type
+        return response_to_client
 
     except requests.exceptions.RequestException as e:
-        print(f"Gemini API 호출 오류: {e}")
-        error_details = "알 수 없는 오류"
-        if e.response is not None:
-            try:
-                error_details = e.response.json()
-            except ValueError:
-                error_details = e.response.text
-        # 클라이언트에게 Google API의 오류 응답을 그대로 전달하거나 요약해서 전달할 수 있음
-        # 예시: return jsonify({"error": "Gemini API 호출 오류", "details": error_details}), e.response.status_code if e.response is not None else 502
-        return jsonify({"error": "Gemini API 호출 중 오류 발생", "details": error_details}), 502 # 이전과 동일하게 502 반환
+        # 네트워크 오류 등 requests 자체 오류
+        print(f"Error calling Google API: {e}")
+        return jsonify({"error": "Proxy failed to call Google API", "details": str(e)}), 502 # Bad Gateway
 
     except Exception as e:
-        print(f"서버 내부 오류: {e}")
-        return jsonify({"error": "서버 내부 오류 발생"}), 500
-
+        # 기타 서버 내부 오류
+        print(f"Internal server error: {e}")
+        return jsonify({"error": "Internal proxy server error", "details": str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Render 환경에서는 PORT 환경 변수를 사용하므로 app.run 불필요 (Gunicorn이 처리)
+    # 로컬 테스트 시에는 아래 주석 해제 가능
+    # app.run(host='0.0.0.0', port=5000, debug=True)
+    pass # Gunicorn 사용 시 이 부분은 실행되지 않음
