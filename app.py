@@ -5,6 +5,7 @@ import requests
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
+app.json.ensure_ascii = False # 이 줄을 추가하세요!
 
 @app.route('/gemini-proxy', methods=['POST'])
 def gemini_proxy():
