@@ -7,8 +7,8 @@ from flask import Flask, request, jsonify, make_response
 import traceback
 
 app = Flask(__name__)
-# app.json.sort_keys = False
-# app.json.ensure_ascii = False # 한글 필요 시 주석 해제
+app.json.sort_keys = False
+app.json.ensure_ascii = False # 한글 필요 시 주석 해제
 
 @app.route('/models/<path:model_id_with_method>', methods=['POST'])
 def gemini_proxy(model_id_with_method):
