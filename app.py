@@ -36,7 +36,6 @@ def gemini_proxy_sdk(model_identifier):
         sdk_response = model.generate_content(
             contents=client_payload.get('contents'),
             generation_config=client_payload.get('generationConfig'), # 클라이언트가 보내면 전달
-            safety_settings=client_payload.get('safetySettings')      # 클라이언트가 보내면 전달
         )
 
         # 응답 텍스트 추출 및 반환
