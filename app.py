@@ -39,13 +39,22 @@ def gemini_proxy(model_id_with_method):
 
         headers = { "Content-Type": "application/json" }
 
-        # 클라이언트로부터 받은 페이로드 전체를 그대로 전달
-        data = google_api_payload
+        # --- !!! 페이로드 수정: thinkingConfig 강제 설정 시작 !!! ---
+        # google_api_payload를 직접 수정하거나, 복사본을 만들어도 됨
+        # 여기서는 직접 수정하는 방식으로 진행
+        data_to_send = google_api_payload
 
-        print(f"Google API 호출 시작: {api_url.split('key=')[0]}key=AIza...") # API 키 일부 숨김
+        # setdefault: 'generationConfig' 키가 없으면 빈 dict를 값으로 설정하고 반환, 있으면 기존 dict 반환
+        gen_config = data_to_send.setdefault('generationConfig', {})
+        # setdefault: 'thinkingConfig' 키가 없으면 빈 dict를 값으로 설정하고 반환, 있으면 기존 dict 반환
+        think_config = gen_config.setdefault('thinkingConfig', {})
+        # 'thinkingBudget' 값을 1024로 강제 설정 (기존 값이 있어도 덮어씀)
+        think_config['thinkingBudget'] = 0
+        # --- !!! 페이로드 수정: thinkingConfig 강제 설정 끝 !!! ---
 
-        # Google API 호출
-        google_response = requests.post(api_url, headers=headers, json=data)
+        print(f"Google API로 보낼 최종 페이로드 (수정됨): {str(data_to_send)[:200]}...") # 수정된 페이로드 확인
+
+        # Google API 호출 (수정된 data_to_send 사용)
 
         # 4. Google API 응답을 클라이언트에게 그대로 전달
         print(f"Google API 응답 상태 코드: {google_response.status_code}")
