@@ -55,7 +55,7 @@ def gemini_proxy(model_id_with_method):
         print(f"Google API로 보낼 최종 페이로드 (수정됨): {str(data_to_send)[:200]}...") # 수정된 페이로드 확인
 
         # Google API 호출 (수정된 data_to_send 사용)
-
+        google_response = requests.post(api_url, headers=headers, json=data_to_send)
         # 4. Google API 응답을 클라이언트에게 그대로 전달
         print(f"Google API 응답 상태 코드: {google_response.status_code}")
 
