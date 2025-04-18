@@ -6,7 +6,7 @@ from flask import Flask, request, jsonify
 import traceback # 상세 오류 로깅을 위해 추가
 
 app = Flask(__name__)
-# app.json.ensure_ascii = False # 필요 시 주석 해제
+app.json.ensure_ascii = False # 필요 시 주석 해제
 
 # URL 경로에서 모델 식별자만 받음
 @app.route('/models/<model_identifier>', methods=['POST'])
