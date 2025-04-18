@@ -9,7 +9,7 @@ import traceback # 오류 로깅 위해 추가
 app = Flask(__name__)
 # 한글 처리 및 JSON 출력 관련 설정 (선택 사항)
 app.json.sort_keys = False # 키 순서 유지 (디버깅 시 유용)
-# app.json.ensure_ascii = False # 한글 깨짐 방지 원하시면 주석 해제
+app.json.ensure_ascii = False # 한글 깨짐 방지 원하시면 주석 해제
 
 # URL 경로에서 모델 ID와 메서드 이름을 받음
 # 예: /models/gemini-pro:generateContent -> model_id_with_method = "gemini-pro:generateContent"
